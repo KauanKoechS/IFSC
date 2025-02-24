@@ -23,37 +23,223 @@
     scene.add(directionalLight);
 
 //--------------------------------------------------------------------- =Configurações Estrutura/Objeto= ---------------------------------------------------------------------//
-//--------------------------------------------------------------------- =Sala=
 //--------------------------------------------------------------------- =Configurações Estrutura/Objeto= ---------------------------------------------------------------------//
-//--------------------------------------------------------------------- =Sala=
-// Função para criar paredes
-function createWall(width, height, depth, color, position) {
-    const geometry = new THREE.BoxGeometry(width, height, depth);
-    const material = new THREE.MeshStandardMaterial({ color });
-    const wall = new THREE.Mesh(geometry, material);
-    wall.position.set(position.x, position.y, position.z);
-    wall.castShadow = true; // Permite que as paredes projetem sombras
-    wall.receiveShadow = true; // Permite que recebam sombras de outros objetos
-    scene.add(wall);
+//--------------------------------------------------------------------- =Sala (Método otimizado com quadros e molduras)= ----------------------------------------------------------//
+
+if (!scene) {
+    console.error("🚫 Erro: A cena (scene) deve ser criada antes de carregar texturas.");
+} else {
+    // Carregar texturas para as paredes, chão, quadros e molduras
+    const textureLoader = new THREE.TextureLoader();
+
+    const texturePaths = [
+        { path: 'textures/wall_texture.jpg', repeat: { x: 1, y: 1 } },
+        { path: 'textures/floor_texture.jpg', repeat: { x: 4, y: 8 } },
+        { path: 'textures/wood_frame.jpg' },
+        { path: 'textures/gold_frame.jpg' },
+        { path: 'textures/colossus.jpg' },
+        { path: 'textures/matrix.jpg' },
+        { path: 'textures/colossus2.jpg' },
+        { path: 'textures/artwork1.jpg' },
+        { path: 'textures/artwork2.jpg' },
+        { path: 'textures/artwork3.jpg' },
+        { path: 'textures/artwork4.jpg' }
+    ];
+
+    let loadedTextures = 0;
+
+    function loadTexture(texturePath, repeatX = 1, repeatY = 1) {
+        const texture = textureLoader.load(
+            texturePath,
+            () => {
+                loadedTextures++;
+                console.log(`✅ Textura carregada: ${texturePath} (${loadedTextures}/${texturePaths.length})`);
+                if (loadedTextures === texturePaths.length) console.log("🎉 Todas as texturas foram carregadas!");
+            },
+            undefined,
+            (err) => console.error(`🚫 Erro ao carregar textura: ${texturePath}`, err)
+        );
+
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(repeatX, repeatY);
+        texture.flipY = false;
+        return texture;
+    }
+
+    const wallTexture = loadTexture(texturePaths[0].path, texturePaths[0].repeat.x, texturePaths[0].repeat.y);
+    const floorTexture = loadTexture(texturePaths[1].path, texturePaths[1].repeat.x, texturePaths[1].repeat.y);
+    const woodFrameTexture = loadTexture('textures/wood_frame.jpg');
+    const goldFrameTexture = loadTexture('textures/gold_frame.jpg');
+
+    const wallMaterial = new THREE.MeshStandardMaterial({ map: wallTexture, side: THREE.DoubleSide, roughness: 0.5 });
+    const floorMaterial = new THREE.MeshStandardMaterial({ map: floorTexture, side: THREE.DoubleSide, roughness: 0.4 });
+    const baseboardMaterial = new THREE.MeshStandardMaterial({ color: 0x2e2e2e, side: THREE.DoubleSide }); // Rodapé marrom
+
+    function createWall(width, height, material, position, rotation) {
+        const geometry = new THREE.PlaneGeometry(width, height);
+        const wall = new THREE.Mesh(geometry, material);
+        wall.position.set(position.x, position.y, position.z);
+        wall.rotation.set(rotation.x, rotation.y, rotation.z);
+        wall.receiveShadow = true;
+        scene.add(wall);
+    }
+
+    function createFloor(width, depth, material, position) {
+        const geometry = new THREE.PlaneGeometry(width, depth);
+        const floor = new THREE.Mesh(geometry, material);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.set(position.x, position.y, position.z);
+        floor.receiveShadow = true;
+        scene.add(floor);
+    }
+
+    // Função para criar rodapé ao longo das paredes
+    function createBaseboard(length, height, material, position, rotation) {
+        const geometry = new THREE. BoxGeometry(length, height);
+        const baseboard = new THREE.Mesh(geometry, material);
+        baseboard.position.set(position.x, position.y, position.z);
+        baseboard.rotation.set(rotation.x, rotation.y, rotation.z);
+        baseboard.receiveShadow = true;
+        baseboard.castShadow = true;
+        scene.add(baseboard);
+    }
+
+    // Função para criar quadros com moldura personalizada
+    function createFramedPicture(width, height, imageTexture, position, rotation, frameConfig = {}) {
+        const {
+            thickness = 0.2,            // Espessura da moldura
+            color = 0x2e2e2e,           // Cor padrão
+            texture = null,            // Textura opcional da moldura
+            frameOffset = -0.01        // Posição da moldura em relação à imagem (valor negativo para trás, positivo para frente)
+        } = frameConfig;
+
+        const frameMaterial = texture
+            ? new THREE.MeshStandardMaterial({ map: texture })
+            : new THREE.MeshStandardMaterial({ color });
+
+        // Criar e posicionar a moldura com offset configurável
+        const frameGeometry = new THREE.PlaneGeometry(width + thickness, height + thickness);
+        const frame = new THREE.Mesh(frameGeometry, frameMaterial);
+        frame.position.set(
+            position.x + frameOffset * Math.sin(rotation.y),
+            position.y,
+            position.z - frameOffset * Math.cos(rotation.y)
+        );
+        frame.rotation.set(rotation.x, rotation.y, rotation.z);
+        frame.receiveShadow = true;
+        frame.castShadow = true;
+        scene.add(frame);
+
+        // Criar e posicionar a imagem levemente à frente da moldura para evitar sobreposição visual
+        const pictureGeometry = new THREE.PlaneGeometry(width, height);
+        const pictureMaterial = new THREE.MeshStandardMaterial({ map: imageTexture, side: THREE.DoubleSide });
+        const picture = new THREE.Mesh(pictureGeometry, pictureMaterial);
+
+        const imageOffset = 0.01; // Ajuste padrão da imagem em relação à moldura
+        picture.position.set(
+            position.x + imageOffset * Math.sin(rotation.y),
+            position.y,
+            position.z - imageOffset * Math.cos(rotation.y)
+        );
+
+        picture.rotation.set(rotation.x + Math.PI, rotation.y, rotation.z); // Inverte a orientação vertical da imagem
+        picture.receiveShadow = true;
+        picture.castShadow = true;
+        scene.add(picture);
+    }
+
+    // Texturas das obras
+    const picturesTextures = [
+        loadTexture('textures/abapuru.jpg'),
+        loadTexture('textures/cabelosolto.jpg'),
+        loadTexture('textures/chad.jpg'),
+        loadTexture('textures/dedonodedo.jpg'),
+        loadTexture('textures/monalizabuhgada.jpg'),
+        loadTexture('textures/galego.jpg'),
+        loadTexture('textures/santaseia.jpg'),
+        loadTexture('textures/seila.jpg'),
+        loadTexture('textures/obra1.jpg')
+    ];
+
+    // Função para posicionar quadros com molduras personalizadas
+    function placeIndividualPictures(picturesArray, wallPosition, wallRotation, positions, framesConfig) {
+        const pictureWidth = 3;
+        const pictureHeight = 2;
+
+        for (let i = 0; i < picturesArray.length; i++) {
+            const pos = positions[i];
+            const frameConfig = framesConfig[i] || {};
+            createFramedPicture(
+                pictureWidth,
+                pictureHeight,
+                picturesArray[i],
+                { x: wallPosition.x + pos.x, y: wallPosition.y + pos.y, z: wallPosition.z + pos.z },
+                wallRotation,
+                frameConfig
+            );
+        }
+    }
+
+    // Posições das obras nas paredes
+    const positionsForBackWall = [
+        { x: -6, y: 2.5, z: 0 },
+        { x: 0, y: 2.5, z: 0 },
+        { x: 6, y: 2.5, z: 0 }
+    ];
+
+    const positionsForLeftWall = [
+        { x: 0, y: 2.5, z: -6 },
+        { x: 0, y: 2.5, z: 0 },
+        { x: 0, y: 2.5, z: 6 }
+    ];
+
+    const positionsForRightWall = [
+        { x: 0, y: 2.5, z: -6 },
+        { x: 0, y: 2.5, z: 0 },
+        { x: 0, y: 2.5, z: 6 }
+    ];
+
+    // Configurações individuais das molduras para cada quadro ("frameOffset" ajusta a profundidade da moldura)
+    const backWallFramesConfig = [
+        { thickness: 0.3, color: 0x8b4513, texture: woodFrameTexture, frameOffset: 0.1 }, // Moldura levemente atrás da imagem
+        { thickness: 0.15, color: 0xffd700, texture: goldFrameTexture, frameOffset: 0.1 },
+        { thickness: 0.25, color: 0x000000, frameOffset: 0.1 }
+    ];
+
+    const leftWallFramesConfig = [
+        { thickness: 0.2, color: 0xffffff, frameOffset: -0.015 },
+        { thickness: 0.2, color: 0x8b0000, texture: woodFrameTexture, frameOffset: -0.02 },
+        { thickness: 0.3, color: 0x2e2e2e, frameOffset: -0.01 }
+    ];
+
+    const rightWallFramesConfig = [
+        { thickness: 0.1, color: 0x4682b4, frameOffset: -0.02 },
+        { thickness: 0.2, color: 0xd2691e, frameOffset: -0.015 },
+        { thickness: 0.25, color: 0xdaa520, texture: goldFrameTexture, frameOffset: -0.025 }
+    ];
+
+    // Criar chão e paredes
+    createFloor(25, 25, floorMaterial, { x: 0, y: -0.1, z: 0 });
+    createWall(25, 10, wallMaterial, { x: 0, y: 5, z: -12.5 }, { x: 0, y: 0, z: 0 });
+    createWall(25, 10, wallMaterial, { x: -12.5, y: 5, z: 0 }, { x: 0, y: Math.PI / 2, z: 0 });
+    createWall(25, 10, wallMaterial, { x: 12.5, y: 5, z: 0 }, { x: 0, y: -Math.PI / 2, z: 0 });
+
+    // Distribuição dos quadros com molduras personalizadas
+    placeIndividualPictures(picturesTextures.slice(0, 3), { x: 0, y: 0, z: -12.3 }, { x: 0, y: 0, z: 0 }, positionsForBackWall, backWallFramesConfig);
+    placeIndividualPictures(picturesTextures.slice(3, 6), { x: -12.4, y: 0, z: 0 }, { x: 0, y: Math.PI / 2, z: 0 }, positionsForLeftWall, leftWallFramesConfig);
+    placeIndividualPictures(picturesTextures.slice(6, 9), { x: 12.4, y: 0, z: 0 }, { x: 0, y: -Math.PI / 2, z: 0 }, positionsForRightWall, rightWallFramesConfig);
+
+    // Criar rodapé com cor marrom em todas as paredes
+    const baseboardHeight = 0.2;
+    createBaseboard(25, baseboardHeight, baseboardMaterial, { x: 0, y: -0.1, z: -12.49 }, { x: 0, y: 0, z: 0 });
+    createBaseboard(25, baseboardHeight, baseboardMaterial, { x: -12.49, y: -0.1, z: 0 }, { x: 0, y: Math.PI / 2, z: 0 });
+    createBaseboard(25, baseboardHeight, baseboardMaterial, { x: 12.49, y: -0.1, z: 0 }, { x: 0, y: -Math.PI / 2, z: 0 });
+
+    // Resumo no console após carregamento
+    setTimeout(() => {
+        console.log(`📊 Texturas carregadas: ${loadedTextures}/${texturePaths.length}`);
+    }, 1500);
 }
-
-// Criar paredes
-    createWall(25, 0.2, 25, 0x808080, { x: 0, y: -0.1, z: 0 }); // Chão menor
-
-    createWall(25, 10, 0.2, 0xffffff, { x: 0, y: 5, z: -12.5 }); // Parede de fundo
-    createWall(0.2, 10, 25, 0xffffff, { x: -12.5, y: 5, z: 0 }); // Parede esquerda
-    createWall(0.2, 10, 25, 0xffffff, { x: 12.5, y: 5, z: 0 });  // Parede direita
-
-// Chão recebendo sombra
-    const groundGeometry = new THREE.PlaneGeometry(23, 23); // Aumentei levemente para cobrir possíveis espaços
-    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-
-    ground.rotation.x = -Math.PI / 2; // Deixar plano
-    ground.position.y = 0.01; // Ajustado um pouco mais para cobrir vãos
-    ground.receiveShadow = true; // Permite receber sombras
-
-    scene.add(ground);
 
 //--------------------------------------------------------------------- =Céu=
 // Criando a esfera do céu
@@ -271,23 +457,6 @@ function createWall(width, height, depth, color, position) {
     window.addEventListener("mouseup", () => {
         isDragging = false;
     });
-//--------------------- =Espada Rúnica Particulas de sangue=
-//--------------------------------------------------------------------- =Quadros=
-// Função para criar um quadro com textura
-    function createFrame(width, height, texturePath, position) {
-        const geometry = new THREE.PlaneGeometry(width, height);
-        const texture = textureLoader.load(texturePath); // Carregar textura
-        const material = new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide });
-        const frame = new THREE.Mesh(geometry, material);
-        frame.position.set(position.x, position.y, position.z);
-        frame.rotation.y = Math.PI; // Virar para a frente da galeria
-        scene.add(frame);
-    }
-
-// Criando quadros com texturas
-    createFrame(3, 2, "textures/colossus.jpg", { x: -5, y: 2.5, z: -9.8 }); // Quadro esquerdo
-    createFrame(3, 2, "textures/matrix.jpg", { x: 0, y: 2.5, z: -9.8 }); // Quadro central
-    createFrame(3, 2, "textures/colossus2.jpg", { x: 5, y: 2.5, z: -9.8 }); // Quadro direito
 //--------------------------------------------------------------------- =Configurações da Câmera= ---------------------------------------------------------------------//
 // Posicionando a câmera dentro da galeria
     camera.position.set(0, 2, 10);
